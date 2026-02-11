@@ -13,6 +13,7 @@ Community node for n8n to call the Framer Server API via the official `framer-ap
 - Get Collection Items
 - Upsert Collection Items
 - Remove Collection Items
+- Setup Collection Fields
 
 ## Credentials
 
@@ -41,6 +42,7 @@ Available operations:
 - Get Collection Items
 - Upsert Collection Items
 - Remove Collection Items
+- Setup Collection Fields
 
 ### Upsert Collection Items payload
 
@@ -68,6 +70,29 @@ Notes:
 
 - Set `draft: true` for unpublished Notion items so they stay out of published deployments.
 - Use a stable `id` (for example Notion page ID) to safely update existing entries.
+
+### Setup Collection Fields payload
+
+`Setup Collection Fields` expects a `Fields JSON` array compatible with `collection.addFields()`.
+
+Example:
+
+```json
+[
+  { "name": "title", "type": "string" },
+  { "name": "content", "type": "formattedText" },
+  { "name": "image", "type": "image" },
+  {
+    "name": "category",
+    "type": "enum",
+    "cases": [{ "name": "News" }, { "name": "Tutorial" }]
+  },
+  { "name": "width", "type": "number" },
+  { "name": "height", "type": "number" }
+]
+```
+
+Use `Skip Existing Fields By Name = true` to make initialization re-runnable without failing on duplicates.
 
 ## Local install (custom n8n host)
 

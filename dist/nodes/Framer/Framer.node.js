@@ -103,6 +103,12 @@ class Framer {
 							description: 'Remove collection items by ID',
 							action: 'Remove Framer collection items',
 						},
+						{
+							name: 'Setup Collection Fields',
+							value: 'setupCollectionFields',
+							description: 'Create collection fields from JSON definitions',
+							action: 'Setup Framer collection fields',
+						},
 					],
 					default: 'getProjectInfo',
 				},
@@ -179,7 +185,12 @@ class Framer {
 					required: true,
 					displayOptions: {
 						show: {
-							operation: ['getCollectionItems', 'upsertCollectionItems', 'removeCollectionItems'],
+							operation: [
+								'getCollectionItems',
+								'upsertCollectionItems',
+								'removeCollectionItems',
+								'setupCollectionFields',
+							],
 						},
 					},
 					description: 'ID of the target collection',
@@ -216,6 +227,37 @@ class Framer {
 						},
 					},
 					description: 'JSON array of item IDs to remove',
+				},
+				{
+					displayName: 'Fields JSON',
+					name: 'fieldsJson',
+					type: 'string',
+					default:
+						'[{"name":"title","type":"string"},{"name":"content","type":"formattedText"},{"name":"image","type":"image"},{"name":"category","type":"enum","cases":[{"name":"News"},{"name":"Tutorial"}]},{"name":"width","type":"number"},{"name":"height","type":"number"}]',
+					typeOptions: {
+						rows: 10,
+					},
+					required: true,
+					displayOptions: {
+						show: {
+							operation: ['setupCollectionFields'],
+						},
+					},
+					description:
+						'JSON array for collection.addFields(). Example field types: string, formattedText, image, number, enum',
+				},
+				{
+					displayName: 'Skip Existing Fields By Name',
+					name: 'skipExistingFields',
+					type: 'boolean',
+					default: true,
+					displayOptions: {
+						show: {
+							operation: ['setupCollectionFields'],
+						},
+					},
+					description:
+						'Whether to skip fields whose names already exist in the collection (case-insensitive)',
 				},
 				{
 					displayName: 'Collection Name',
@@ -411,6 +453,76 @@ class Framer {
 						result = {
 							collectionId: String(collectionId),
 							removedCount: normalizedItemIds.length,
+						};
+					}
+
+					if (operation === 'setupCollectionFields') {
+						const collectionId = this.getNodeParameter('collectionId', i);
+						const fieldsJson = this.getNodeParameter('fieldsJson', i, '[]');
+						const skipExistingFields = this.getNodeParameter('skipExistingFields', i, true);
+
+						if (!collectionId || !String(collectionId).trim()) {
+							throw new Error('Collection ID is required for Setup Collection Fields operation');
+						}
+
+						const collection = await framer.getCollection(String(collectionId));
+						if (!collection) {
+							throw new Error(`Collection not found for ID: ${String(collectionId)}`);
+						}
+
+						let fieldsPayload;
+						try {
+							fieldsPayload = JSON.parse(String(fieldsJson));
+						} catch (parseError) {
+							throw new Error(
+								`Fields JSON is invalid: ${parseError && parseError.message ? parseError.message : 'parse error'}`,
+							);
+						}
+
+						if (!Array.isArray(fieldsPayload)) {
+							throw new Error('Fields JSON must be a JSON array');
+						}
+
+						let fieldsToCreate = fieldsPayload;
+						let skippedFieldNames = [];
+
+						if (skipExistingFields) {
+							const existingFields = await collection.getFields();
+							const existingFieldNames = new Set(
+								existingFields
+									.map((field) => String(field.name || '').trim().toLowerCase())
+									.filter((name) => name.length > 0),
+							);
+
+							fieldsToCreate = fieldsPayload.filter((field) => {
+								const fieldName = String((field && field.name) || '').trim().toLowerCase();
+								if (!fieldName) {
+									return true;
+								}
+								const exists = existingFieldNames.has(fieldName);
+								if (exists) {
+									skippedFieldNames.push(String(field.name));
+								}
+								return !exists;
+							});
+						}
+
+						let createdFields = [];
+						if (fieldsToCreate.length > 0) {
+							createdFields = await collection.addFields(fieldsToCreate);
+						}
+
+						result = {
+							collectionId: String(collectionId),
+							requestedCount: fieldsPayload.length,
+							createdCount: createdFields.length,
+							skippedCount: skippedFieldNames.length,
+							skippedFieldNames,
+							createdFields: createdFields.map((field) => ({
+								id: field.id,
+								name: field.name,
+								type: field.type,
+							})),
 						};
 					}
 				} finally {
