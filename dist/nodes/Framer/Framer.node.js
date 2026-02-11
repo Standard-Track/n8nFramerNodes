@@ -196,6 +196,19 @@ class Framer {
 					description: 'ID of the target collection',
 				},
 				{
+					displayName: 'Return Raw Item',
+					name: 'returnRawItem',
+					type: 'boolean',
+					default: false,
+					displayOptions: {
+						show: {
+							operation: ['getCollectionItems'],
+						},
+					},
+					description:
+						'Whether to return the full raw Framer item object instead of mapped fields',
+				},
+				{
 					displayName: 'Items JSON',
 					name: 'itemsJson',
 					type: 'string',
@@ -371,6 +384,7 @@ class Framer {
 
 					if (operation === 'getCollectionItems') {
 						const collectionId = this.getNodeParameter('collectionId', i);
+						const returnRawItem = this.getNodeParameter('returnRawItem', i, false);
 						if (!collectionId || !String(collectionId).trim()) {
 							throw new Error('Collection ID is required for Get Collection Items operation');
 						}
@@ -381,12 +395,16 @@ class Framer {
 						}
 
 						const items = await collection.getItems();
-						result = items.map((item) => ({
-							id: item.id,
-							slug: item.slug,
-							draft: item.draft === true,
-							fieldData: item.fieldData,
-						}));
+						if (returnRawItem) {
+							result = items.map((item) => ({ ...item }));
+						} else {
+							result = items.map((item) => ({
+								id: item.id,
+								slug: item.slug,
+								draft: item.draft === true,
+								fieldData: item.fieldData,
+							}));
+						}
 					}
 
 					if (operation === 'upsertCollectionItems') {

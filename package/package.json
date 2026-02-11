@@ -1,0 +1,59 @@
+{
+  "name": "framer-api",
+  "version": "0.1.1",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "jest",
+    "analyze": "tsup --metafile && du -sh dist/*",
+    "size": "du -sh dist/*",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "check": "yarn typecheck && yarn lint",
+    "prepack": "exit 0; covered by Makefile, do not change",
+    "prepublish": "exit 0; covered by Makefile, do not change",
+    "prepublishOnly": "echo 'Please use make for publishing' && exit 1"
+  },
+  "dependencies": {
+    "devalue": "^5.6.2",
+    "std-env": "^3.10.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@framerjs/framer-api-devkit": "0.0.0",
+    "@framerjs/shared": "1.0.0",
+    "@swc/core": "1.15.3",
+    "@swc/jest": "^0.2.37",
+    "@types/node": "24.10.9",
+    "@typescript-eslint/eslint-plugin": "^8.40.0",
+    "@typescript-eslint/parser": "^8.40.0",
+    "eslint": "^8.57.1",
+    "eslint-plugin-framer-studio": "1.0.0",
+    "framer-plugin": "3.10.3",
+    "jest": "29.4.1",
+    "tsup": "^8.0.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.2",
+    "vekter": "0.0.1"
+  },
+  "imports": {
+    "#framer-plugin/*": "../plugin-api/src/*"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  }
+}
