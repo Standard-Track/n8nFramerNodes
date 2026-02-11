@@ -209,6 +209,19 @@ class Framer {
 						'Whether to return the full raw Framer item object instead of mapped fields',
 				},
 				{
+					displayName: 'Include Enum Case IDs',
+					name: 'includeEnumCaseIds',
+					type: 'boolean',
+					default: false,
+					displayOptions: {
+						show: {
+							operation: ['getCollectionItems'],
+						},
+					},
+					description:
+						'Whether to include resolved enum case IDs per item (based on collection field definitions)',
+				},
+				{
 					displayName: 'Items JSON',
 					name: 'itemsJson',
 					type: 'string',
@@ -385,6 +398,7 @@ class Framer {
 					if (operation === 'getCollectionItems') {
 						const collectionId = this.getNodeParameter('collectionId', i);
 						const returnRawItem = this.getNodeParameter('returnRawItem', i, false);
+						const includeEnumCaseIds = this.getNodeParameter('includeEnumCaseIds', i, false);
 						if (!collectionId || !String(collectionId).trim()) {
 							throw new Error('Collection ID is required for Get Collection Items operation');
 						}
@@ -394,15 +408,67 @@ class Framer {
 							throw new Error(`Collection not found for ID: ${String(collectionId)}`);
 						}
 
+						let enumFieldLookups = {};
+						if (includeEnumCaseIds) {
+							const fields = await collection.getFields();
+							enumFieldLookups = fields
+								.filter((field) => field && field.type === 'enum')
+								.reduce((acc, field) => {
+									const cases = Array.isArray(field.cases) ? field.cases : [];
+									acc[field.id] = {
+										fieldName: field.name,
+										byName: cases.reduce((caseAcc, enumCase) => {
+											caseAcc[String(enumCase.name)] = String(enumCase.id);
+											return caseAcc;
+										}, {}),
+										byNameLower: cases.reduce((caseAcc, enumCase) => {
+											caseAcc[String(enumCase.name).toLowerCase()] = String(enumCase.id);
+											return caseAcc;
+										}, {}),
+									};
+									return acc;
+								}, {});
+						}
+
+						const resolveEnumCaseIds = (fieldData) => {
+							if (!includeEnumCaseIds || !fieldData || typeof fieldData !== 'object') {
+								return {};
+							}
+							return Object.keys(enumFieldLookups).reduce((acc, enumFieldId) => {
+								const lookup = enumFieldLookups[enumFieldId];
+								const entry = fieldData[enumFieldId];
+								const rawValue =
+									entry && typeof entry === 'object' && 'value' in entry ? entry.value : entry;
+								if (typeof rawValue !== 'string') {
+									return acc;
+								}
+								const caseId =
+									lookup.byName[rawValue] || lookup.byNameLower[String(rawValue).toLowerCase()];
+								if (!caseId) {
+									return acc;
+								}
+								acc[enumFieldId] = {
+									fieldName: lookup.fieldName,
+									caseName: rawValue,
+									caseId,
+								};
+								return acc;
+							}, {});
+						};
+
 						const items = await collection.getItems();
 						if (returnRawItem) {
-							result = items.map((item) => ({ ...item }));
+							result = items.map((item) => ({
+								...item,
+								enumCaseIds: resolveEnumCaseIds(item.fieldData),
+							}));
 						} else {
 							result = items.map((item) => ({
 								id: item.id,
 								slug: item.slug,
 								draft: item.draft === true,
 								fieldData: item.fieldData,
+								enumCaseIds: resolveEnumCaseIds(item.fieldData),
 							}));
 						}
 					}
