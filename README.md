@@ -85,6 +85,47 @@ npm install /path/to/n8n-nodes-framer-api-0.1.0.tgz
 
 Restart n8n service after install.
 
+## Auto deploy from GitHub to Proxmox
+
+This repo includes a GitHub Actions workflow at
+`.github/workflows/deploy-proxmox-n8n-node.yml` that deploys on every push to
+`main` (and can also be run manually from Actions).
+
+### 1) Add GitHub repository secrets
+
+Required:
+
+- `PROXMOX_HOST` (for example `192.168.0.102`)
+- `PROXMOX_USER` (for example `root`)
+- `PROXMOX_SSH_KEY` (private key contents used by Actions SSH)
+
+Optional (defaults are built into the workflow):
+
+- `PROXMOX_PORT` (default `22`)
+- `PROXMOX_REPO_DIR` (default `/root/n8nFramerNodes`)
+- `PROXMOX_N8N_NODES_DIR` (default `/root/.n8n/nodes`)
+- `PROXMOX_N8N_SERVICE` (default `n8n`)
+
+### 2) One-time server preparation
+
+On Proxmox host (or the VM/container where n8n runs), ensure:
+
+- `git`, `node`, and `npm` are installed
+- this repository is cloned at `PROXMOX_REPO_DIR`
+- the server can `git pull` from your GitHub repo non-interactively
+  (deploy key or SSH agent setup)
+- your n8n service is managed by systemd (`systemctl restart n8n`)
+
+### 3) Deployment flow
+
+When code is pushed to `main`, the workflow will:
+
+1. SSH to the server
+2. Run `git pull --ff-only` in repo
+3. Run `npm ci` and `npm pack`
+4. Install the generated `.tgz` into `/root/.n8n/nodes`
+5. Restart n8n service
+
 ## Notes
 
 - Ensure community nodes are enabled in your n8n installation.

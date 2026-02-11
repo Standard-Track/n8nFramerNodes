@@ -1,0 +1,61 @@
+name: Deploy n8n Framer Node to Proxmox
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-proxmox-n8n-node
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and install on Proxmox
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROXMOX_HOST }}
+          username: ${{ secrets.PROXMOX_USER }}
+          key: ${{ secrets.PROXMOX_SSH_KEY }}
+          port: ${{ secrets.PROXMOX_PORT || 22 }}
+          script_stop: true
+          command_timeout: 20m
+          script: |
+            set -euo pipefail
+
+            REPO_DIR="${{ secrets.PROXMOX_REPO_DIR }}"
+            N8N_NODES_DIR="${{ secrets.PROXMOX_N8N_NODES_DIR }}"
+            N8N_SERVICE="${{ secrets.PROXMOX_N8N_SERVICE }}"
+
+            if [ -z "$REPO_DIR" ]; then
+              REPO_DIR="/root/n8nFramerNodes"
+            fi
+            if [ -z "$N8N_NODES_DIR" ]; then
+              N8N_NODES_DIR="/root/.n8n/nodes"
+            fi
+            if [ -z "$N8N_SERVICE" ]; then
+              N8N_SERVICE="n8n"
+            fi
+
+            echo "Using REPO_DIR=$REPO_DIR"
+            echo "Using N8N_NODES_DIR=$N8N_NODES_DIR"
+            echo "Using N8N_SERVICE=$N8N_SERVICE"
+
+            test -d "$REPO_DIR"
+            test -d "$N8N_NODES_DIR"
+
+            cd "$REPO_DIR"
+            git pull --ff-only
+            npm ci
+            PKG_TGZ="$(npm pack | tail -n1)"
+
+            cd "$N8N_NODES_DIR"
+            npm install --no-audit --no-fund "$REPO_DIR/$PKG_TGZ"
+
+            systemctl restart "$N8N_SERVICE"
+            systemctl is-active "$N8N_SERVICE"
