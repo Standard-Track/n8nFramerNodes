@@ -1,0 +1,34 @@
+{
+  "name": "n8n-nodes-framer-api",
+  "version": "0.1.0",
+  "description": "n8n community node for Framer Server API workflows",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "framer",
+    "framer-api"
+  ],
+  "license": "MIT",
+  "author": "StandardTrack",
+  "main": "index.js",
+  "files": [
+    "dist",
+    "index.js",
+    "README.md"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/FramerApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/Framer/Framer.node.js"
+    ]
+  },
+  "engines": {
+    "node": ">=18.10"
+  },
+  "dependencies": {
+    "framer-api": "^0.1.1"
+  }
+}

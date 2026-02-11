@@ -1,0 +1,13 @@
+node_modules/
+*.log
+*.tgz
+
+# Local environment files
+.env
+.env.*
+
+# IDE / OS noise
+.cursor/
+.vscode/
+.DS_Store
+Thumbs.db
