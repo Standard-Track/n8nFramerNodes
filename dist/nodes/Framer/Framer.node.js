@@ -222,19 +222,6 @@ class Framer {
 						'Whether to include resolved enum case IDs per item (based on collection field definitions)',
 				},
 				{
-					displayName: 'Return Each Collection Item As Output Item',
-					name: 'splitOutCollectionItems',
-					type: 'boolean',
-					default: false,
-					displayOptions: {
-						show: {
-							operation: ['getCollectionItems'],
-						},
-					},
-					description:
-						'Whether to return one n8n output item per collection item instead of a single aggregated result array',
-				},
-				{
 					displayName: 'Items JSON',
 					name: 'itemsJson',
 					type: 'string',
@@ -412,11 +399,6 @@ class Framer {
 						const collectionId = this.getNodeParameter('collectionId', i);
 						const returnRawItem = this.getNodeParameter('returnRawItem', i, false);
 						const includeEnumCaseIds = this.getNodeParameter('includeEnumCaseIds', i, false);
-						const splitOutCollectionItems = this.getNodeParameter(
-							'splitOutCollectionItems',
-							i,
-							false,
-						);
 						if (!collectionId || !String(collectionId).trim()) {
 							throw new Error('Collection ID is required for Get Collection Items operation');
 						}
@@ -488,19 +470,6 @@ class Framer {
 								fieldData: item.fieldData,
 								enumCaseIds: resolveEnumCaseIds(item.fieldData),
 							}));
-						}
-
-						if (splitOutCollectionItems) {
-							result.forEach((resultItem) => {
-								returnData.push({
-									json: {
-										operation,
-										success: true,
-										result: resultItem,
-									},
-								});
-							});
-							continue;
 						}
 					}
 
