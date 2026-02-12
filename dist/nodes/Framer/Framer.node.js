@@ -499,6 +499,34 @@ class Framer {
 							throw new Error('Items JSON must be a JSON array');
 						}
 
+						const normalizeOptionalString = (value) => {
+							if (value == null) {
+								return '';
+							}
+							return String(value);
+						};
+						const normalizeOptionalBoolean = (value, fallback) => {
+							if (typeof value === 'boolean') {
+								return value;
+							}
+							return fallback;
+						};
+						const syncInputs = itemsPayload.map((item) => {
+							const source = item && typeof item === 'object' ? item : {};
+							const sourceId =
+								source.id != null && String(source.id).trim().length > 0
+									? String(source.id).trim()
+									: '';
+							return {
+								notionPageId: normalizeOptionalString(source.notionPageId || source.notionId || ''),
+								framerItemId: normalizeOptionalString(source.framerItemId || sourceId || ''),
+								lastSyncHash: normalizeOptionalString(source.lastSyncHash || ''),
+								contentHash: normalizeOptionalString(source.contentHash || ''),
+								hasFramerId: normalizeOptionalBoolean(source.hasFramerId, sourceId.length > 0),
+								isChanged: normalizeOptionalBoolean(source.isChanged, true),
+								name: normalizeOptionalString(source.name || source.title || source.slug || ''),
+							};
+						});
 						const normalizeItemSummary = (item) => ({
 							id: item && item.id ? String(item.id) : undefined,
 							slug: item && item.slug ? String(item.slug) : undefined,
@@ -518,9 +546,10 @@ class Framer {
 						let normalizedUpsertedItems = Array.isArray(upsertedItems)
 							? upsertedItems.map((item) => normalizeItemSummary(item))
 							: [];
-						let unresolvedRequestedItems = [];
-						if (normalizedUpsertedItems.length === 0 && requestedItems.length > 0) {
-							// Some framer-api versions return no items from addItems(). Resolve them by re-reading collection.
+						const sleep = async (ms) => {
+							await new Promise((resolve) => setTimeout(resolve, ms));
+						};
+						const resolveRequestedItemsFromCollection = async (requested) => {
 							const collectionItems = await collection.getItems();
 							const collectionItemsById = new Map();
 							const collectionItemsBySlug = new Map();
@@ -535,7 +564,7 @@ class Framer {
 									collectionItemsBySlugLower.set(normalized.slug.toLowerCase(), normalized);
 								}
 							});
-							normalizedUpsertedItems = requestedItems
+							return requested
 								.map((requestedItem) => {
 									if (requestedItem.id && collectionItemsById.has(requestedItem.id)) {
 										return collectionItemsById.get(requestedItem.id);
@@ -552,25 +581,57 @@ class Framer {
 									return undefined;
 								})
 								.filter((item) => item !== undefined);
-							const matchedKeySet = new Set(
-								normalizedUpsertedItems.map((item) => item.id || item.slug || ''),
-							);
-							unresolvedRequestedItems = requestedItems.filter((requestedItem) => {
-								const key = requestedItem.id || requestedItem.slug || '';
-								if (!key) {
-									return true;
-								}
-								return !matchedKeySet.has(key);
-							});
-						}
-						result = {
-							collectionId: String(collectionId),
-							upsertedCount: itemsPayload.length,
-							returnedCount: normalizedUpsertedItems.length,
-							items: normalizedUpsertedItems,
-							requestedItems,
-							unresolvedRequestedItems,
 						};
+						let resolutionAttempts = 0;
+						if (requestedItems.length > normalizedUpsertedItems.length) {
+							// Some framer-api versions return no/partial items from addItems(). Retry resolution briefly.
+							const maxResolutionAttempts = 4;
+							for (let attempt = 1; attempt <= maxResolutionAttempts; attempt++) {
+								resolutionAttempts = attempt;
+								if (attempt > 1) {
+									await sleep(350 * (attempt - 1));
+								}
+								const resolvedItems = await resolveRequestedItemsFromCollection(requestedItems);
+								if (resolvedItems.length > normalizedUpsertedItems.length) {
+									normalizedUpsertedItems = resolvedItems;
+								}
+								if (normalizedUpsertedItems.length >= requestedItems.length) {
+									break;
+								}
+							}
+						}
+						const matchedKeySet = new Set(
+							normalizedUpsertedItems.map((item) => item.id || item.slug || ''),
+						);
+						const unresolvedRequestedItems = requestedItems.filter((requestedItem) => {
+							const key = requestedItem.id || requestedItem.slug || '';
+							if (!key) {
+								return true;
+							}
+							return !matchedKeySet.has(key);
+						});
+						const syncItems = requestedItems.map((requestedItem, index) => {
+							const inputSync = syncInputs[index] || {};
+							const resolvedItem = normalizedUpsertedItems[index];
+							const resolvedFramerItemId = normalizeOptionalString(
+								(resolvedItem && resolvedItem.id) || requestedItem.id || inputSync.framerItemId || '',
+							);
+							return {
+								notionPageId: normalizeOptionalString(inputSync.notionPageId || ''),
+								framerItemId: resolvedFramerItemId,
+								lastSyncHash: normalizeOptionalString(inputSync.lastSyncHash || ''),
+								contentHash: normalizeOptionalString(inputSync.contentHash || ''),
+								hasFramerId: normalizeOptionalBoolean(
+									inputSync.hasFramerId,
+									resolvedFramerItemId.length > 0,
+								),
+								isChanged: normalizeOptionalBoolean(inputSync.isChanged, true),
+								name: normalizeOptionalString(
+									inputSync.name || requestedItem.slug || (resolvedItem && resolvedItem.slug) || '',
+								),
+							};
+						});
+						result = syncItems;
 					}
 
 					if (operation === 'removeCollectionItems') {
