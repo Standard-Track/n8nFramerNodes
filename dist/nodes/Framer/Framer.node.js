@@ -511,6 +511,23 @@ class Framer {
 							}
 							return fallback;
 						};
+						const inputJson =
+							items[i] && items[i].json && typeof items[i].json === 'object' ? items[i].json : {};
+						const inputNotionPageId = normalizeOptionalString(
+							inputJson.notionPageId || inputJson.notionId || inputJson.id || '',
+						);
+						const inputFramerItemId = normalizeOptionalString(
+							inputJson.framerItemId || inputJson.framer_item_id || '',
+						);
+						const inputLastSyncHash = normalizeOptionalString(
+							inputJson.lastSyncHash || inputJson.last_sync_hash || '',
+						);
+						const inputContentHash = normalizeOptionalString(
+							inputJson.contentHash || inputJson.content_hash || '',
+						);
+						const inputName = normalizeOptionalString(
+							inputJson.name || inputJson.title || inputJson.property_title || '',
+						);
 						const syncInputs = itemsPayload.map((item) => {
 							const source = item && typeof item === 'object' ? item : {};
 							const sourceId =
@@ -518,13 +535,23 @@ class Framer {
 									? String(source.id).trim()
 									: '';
 							return {
-								notionPageId: normalizeOptionalString(source.notionPageId || source.notionId || ''),
-								framerItemId: normalizeOptionalString(source.framerItemId || sourceId || ''),
-								lastSyncHash: normalizeOptionalString(source.lastSyncHash || ''),
-								contentHash: normalizeOptionalString(source.contentHash || ''),
+								notionPageId: normalizeOptionalString(
+									source.notionPageId || source.notionId || inputNotionPageId || '',
+								),
+								framerItemId: normalizeOptionalString(
+									source.framerItemId || source.framer_item_id || sourceId || inputFramerItemId || '',
+								),
+								lastSyncHash: normalizeOptionalString(
+									source.lastSyncHash || source.last_sync_hash || inputLastSyncHash || '',
+								),
+								contentHash: normalizeOptionalString(
+									source.contentHash || source.content_hash || inputContentHash || '',
+								),
 								hasFramerId: normalizeOptionalBoolean(source.hasFramerId, sourceId.length > 0),
 								isChanged: normalizeOptionalBoolean(source.isChanged, true),
-								name: normalizeOptionalString(source.name || source.title || source.slug || ''),
+								name: normalizeOptionalString(
+									source.name || source.title || source.slug || inputName || '',
+								),
 							};
 						});
 						const normalizeItemSummary = (item) => ({
