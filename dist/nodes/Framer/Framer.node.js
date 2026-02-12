@@ -239,6 +239,19 @@ class Framer {
 						'JSON array of items for collection.addItems(). Include `id` to update existing items or omit it to create. Supports `draft: true` for unpublished items',
 				},
 				{
+					displayName: 'Update Changed Fields Only',
+					name: 'updateChangedFieldsOnly',
+					type: 'boolean',
+					default: true,
+					displayOptions: {
+						show: {
+							operation: ['upsertCollectionItems'],
+						},
+					},
+					description:
+						'Whether to update only changed fields for existing items (new items are still created with all fields)',
+				},
+				{
 					displayName: 'Item IDs JSON',
 					name: 'itemIdsJson',
 					type: 'string',
@@ -476,6 +489,11 @@ class Framer {
 					if (operation === 'upsertCollectionItems') {
 						const collectionId = this.getNodeParameter('collectionId', i);
 						const itemsJson = this.getNodeParameter('itemsJson', i, '[]');
+						const updateChangedFieldsOnly = this.getNodeParameter(
+							'updateChangedFieldsOnly',
+							i,
+							true,
+						);
 
 						if (!collectionId || !String(collectionId).trim()) {
 							throw new Error('Collection ID is required for Upsert Collection Items operation');
@@ -560,7 +578,21 @@ class Framer {
 							draft: item && item.draft === true,
 							fieldData: item ? item.fieldData : undefined,
 						});
-						const upsertedItems = await collection.addItems(itemsPayload);
+						const toStableJson = (value) => {
+							if (Array.isArray(value)) {
+								return value.map((entry) => toStableJson(entry));
+							}
+							if (value && typeof value === 'object') {
+								return Object.keys(value)
+									.sort()
+									.reduce((acc, key) => {
+										acc[key] = toStableJson(value[key]);
+										return acc;
+									}, {});
+							}
+							return value;
+						};
+						const toStableString = (value) => JSON.stringify(toStableJson(value));
 						const requestedItems = itemsPayload.map((item) => ({
 							id:
 								item && typeof item === 'object' && item.id != null ? String(item.id) : undefined,
@@ -570,6 +602,82 @@ class Framer {
 									: undefined,
 							draft: item && typeof item === 'object' && item.draft === true,
 						}));
+						let upsertItemsPayload = itemsPayload;
+						if (updateChangedFieldsOnly) {
+							const collectionItemsForDiff = await collection.getItems();
+							const collectionItemsById = new Map();
+							const collectionItemsBySlugLower = new Map();
+							collectionItemsForDiff.forEach((collectionItem) => {
+								const normalized = normalizeItemSummary(collectionItem);
+								if (normalized.id) {
+									collectionItemsById.set(normalized.id, normalized);
+								}
+								if (normalized.slug) {
+									collectionItemsBySlugLower.set(normalized.slug.toLowerCase(), normalized);
+								}
+							});
+							upsertItemsPayload = itemsPayload
+								.map((item) => {
+									if (!item || typeof item !== 'object') {
+										return item;
+									}
+									const itemId =
+										item.id != null && String(item.id).trim().length > 0
+											? String(item.id).trim()
+											: undefined;
+									const itemSlug =
+										item.slug != null && String(item.slug).trim().length > 0
+											? String(item.slug).trim()
+											: undefined;
+									const existingItem =
+										(itemId && collectionItemsById.get(itemId)) ||
+										(itemSlug && collectionItemsBySlugLower.get(itemSlug.toLowerCase()));
+									if (!existingItem) {
+										return item;
+									}
+									const nextFieldData =
+										item.fieldData && typeof item.fieldData === 'object' ? item.fieldData : {};
+									const currentFieldData =
+										existingItem.fieldData && typeof existingItem.fieldData === 'object'
+											? existingItem.fieldData
+											: {};
+									const changedFieldData = Object.keys(nextFieldData).reduce((acc, fieldId) => {
+										const incomingValue = nextFieldData[fieldId];
+										const existingValue = currentFieldData[fieldId];
+										if (toStableString(incomingValue) !== toStableString(existingValue)) {
+											acc[fieldId] = incomingValue;
+										}
+										return acc;
+									}, {});
+									const slugChanged =
+										itemSlug !== undefined &&
+										String(existingItem.slug || '') !== String(itemSlug || '');
+									const draftChanged =
+										typeof item.draft === 'boolean' &&
+										Boolean(existingItem.draft) !== Boolean(item.draft);
+									const hasFieldChanges = Object.keys(changedFieldData).length > 0;
+									if (!slugChanged && !draftChanged && !hasFieldChanges) {
+										return null;
+									}
+									const minimalItem = {};
+									if (itemId) {
+										minimalItem.id = itemId;
+									}
+									if (itemSlug) {
+										minimalItem.slug = itemSlug;
+									}
+									if (typeof item.draft === 'boolean') {
+										minimalItem.draft = item.draft;
+									}
+									if (hasFieldChanges) {
+										minimalItem.fieldData = changedFieldData;
+									}
+									return minimalItem;
+								})
+								.filter((item) => item !== null);
+						}
+						const upsertedItems =
+							upsertItemsPayload.length > 0 ? await collection.addItems(upsertItemsPayload) : [];
 						let normalizedUpsertedItems = Array.isArray(upsertedItems)
 							? upsertedItems.map((item) => normalizeItemSummary(item))
 							: [];
