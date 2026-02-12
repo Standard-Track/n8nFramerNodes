@@ -499,10 +499,30 @@ class Framer {
 							throw new Error('Items JSON must be a JSON array');
 						}
 
-						await collection.addItems(itemsPayload);
+						const upsertedItems = await collection.addItems(itemsPayload);
+						const normalizedUpsertedItems = Array.isArray(upsertedItems)
+							? upsertedItems.map((item) => ({
+									id: item && item.id ? String(item.id) : undefined,
+									slug: item && item.slug ? String(item.slug) : undefined,
+									draft: item && item.draft === true,
+									fieldData: item ? item.fieldData : undefined,
+								}))
+							: [];
+						const requestedItems = itemsPayload.map((item) => ({
+							id:
+								item && typeof item === 'object' && item.id != null ? String(item.id) : undefined,
+							slug:
+								item && typeof item === 'object' && item.slug != null
+									? String(item.slug)
+									: undefined,
+							draft: item && typeof item === 'object' && item.draft === true,
+						}));
 						result = {
 							collectionId: String(collectionId),
 							upsertedCount: itemsPayload.length,
+							returnedCount: normalizedUpsertedItems.length,
+							items: normalizedUpsertedItems,
+							requestedItems,
 						};
 					}
 
