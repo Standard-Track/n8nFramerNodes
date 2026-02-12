@@ -499,15 +499,13 @@ class Framer {
 							throw new Error('Items JSON must be a JSON array');
 						}
 
+						const normalizeItemSummary = (item) => ({
+							id: item && item.id ? String(item.id) : undefined,
+							slug: item && item.slug ? String(item.slug) : undefined,
+							draft: item && item.draft === true,
+							fieldData: item ? item.fieldData : undefined,
+						});
 						const upsertedItems = await collection.addItems(itemsPayload);
-						const normalizedUpsertedItems = Array.isArray(upsertedItems)
-							? upsertedItems.map((item) => ({
-									id: item && item.id ? String(item.id) : undefined,
-									slug: item && item.slug ? String(item.slug) : undefined,
-									draft: item && item.draft === true,
-									fieldData: item ? item.fieldData : undefined,
-								}))
-							: [];
 						const requestedItems = itemsPayload.map((item) => ({
 							id:
 								item && typeof item === 'object' && item.id != null ? String(item.id) : undefined,
@@ -517,12 +515,61 @@ class Framer {
 									: undefined,
 							draft: item && typeof item === 'object' && item.draft === true,
 						}));
+						let normalizedUpsertedItems = Array.isArray(upsertedItems)
+							? upsertedItems.map((item) => normalizeItemSummary(item))
+							: [];
+						let unresolvedRequestedItems = [];
+						if (normalizedUpsertedItems.length === 0 && requestedItems.length > 0) {
+							// Some framer-api versions return no items from addItems(). Resolve them by re-reading collection.
+							const collectionItems = await collection.getItems();
+							const collectionItemsById = new Map();
+							const collectionItemsBySlug = new Map();
+							const collectionItemsBySlugLower = new Map();
+							collectionItems.forEach((collectionItem) => {
+								const normalized = normalizeItemSummary(collectionItem);
+								if (normalized.id) {
+									collectionItemsById.set(normalized.id, normalized);
+								}
+								if (normalized.slug) {
+									collectionItemsBySlug.set(normalized.slug, normalized);
+									collectionItemsBySlugLower.set(normalized.slug.toLowerCase(), normalized);
+								}
+							});
+							normalizedUpsertedItems = requestedItems
+								.map((requestedItem) => {
+									if (requestedItem.id && collectionItemsById.has(requestedItem.id)) {
+										return collectionItemsById.get(requestedItem.id);
+									}
+									if (requestedItem.slug && collectionItemsBySlug.has(requestedItem.slug)) {
+										return collectionItemsBySlug.get(requestedItem.slug);
+									}
+									if (
+										requestedItem.slug &&
+										collectionItemsBySlugLower.has(requestedItem.slug.toLowerCase())
+									) {
+										return collectionItemsBySlugLower.get(requestedItem.slug.toLowerCase());
+									}
+									return undefined;
+								})
+								.filter((item) => item !== undefined);
+							const matchedKeySet = new Set(
+								normalizedUpsertedItems.map((item) => item.id || item.slug || ''),
+							);
+							unresolvedRequestedItems = requestedItems.filter((requestedItem) => {
+								const key = requestedItem.id || requestedItem.slug || '';
+								if (!key) {
+									return true;
+								}
+								return !matchedKeySet.has(key);
+							});
+						}
 						result = {
 							collectionId: String(collectionId),
 							upsertedCount: itemsPayload.length,
 							returnedCount: normalizedUpsertedItems.length,
 							items: normalizedUpsertedItems,
 							requestedItems,
+							unresolvedRequestedItems,
 						};
 					}
 
